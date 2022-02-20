@@ -140,4 +140,4 @@ cython_debug/
 # pycharm
 .idea/
 
-service/
+service/gen-py/
