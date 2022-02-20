@@ -41,7 +41,8 @@ class NodeSimi:
         query = self._encode(q, batch_size=batch_size)
 
         confi = util.pytorch_cos_sim(query, self.keys_embedding)
-        score, idx = torch.topk(confi, k)
+        n = confi.size(-1)
+        score, idx = torch.topk(confi, min(k, n))
         score, idx = score.tolist()[0], idx.tolist()[0]
 
         return [self.keys[i] for i, s in zip(idx, score) if s > threshold]

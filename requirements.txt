@@ -1,0 +1,8 @@
+nltk == 3.5
+numpy == 1.20.1
+requests == 2.26.0
+scikit_learn == 0.24.1
+sentence_transformers == 1.1.1
+spacy == 3.1.0
+torch == 1.8.0
+transformers == 4.6.0

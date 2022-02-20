@@ -37,9 +37,13 @@ class SpanQA(torch.nn.Module):
 
 class MaskedQA(torch.nn.Module):
 
-    def __init__(self, pretrained_model_name_or_path):
+    def __init__(self, pretrained_model_name_or_path, tokenizer=None):
         super(MaskedQA, self).__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+        if tokenizer:
+            self.tokenizer = tokenizer.from_pretrained(pretrained_model_name_or_path)
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+
         self.model = AutoModelForMaskedLM.from_pretrained(pretrained_model_name_or_path).eval()
 
         self.mask_token = self.tokenizer.mask_token
@@ -55,9 +59,14 @@ class MaskedQA(torch.nn.Module):
         token_logits = self.model(**input).logits
         mask_token_logits = token_logits[0, mask_token_index, :]
 
-        top_5_indexes = torch.topk(mask_token_logits, top_k).indices[0].tolist()
-        top_5_tokens = self.tokenizer.convert_tokens_to_string(self.tokenizer.convert_ids_to_tokens(top_5_indexes))
-        return [token for token in top_5_tokens.split(' ')if token]
+        n = mask_token_logits.size(-1)
+        top_5_indexes = torch.topk(mask_token_logits, min(top_k, n)).indices.tolist()
+        top_5_tokens = [
+            self.tokenizer.convert_tokens_to_string(self.tokenizer.convert_ids_to_tokens(top_5_indexes_)).strip().split(' ')
+            for top_5_indexes_ in top_5_indexes]
+
+
+        return [''.join(args) for args in zip(*top_5_tokens)]
 
 
 class GuidedQA(torch.nn.Module):

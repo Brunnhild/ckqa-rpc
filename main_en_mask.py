@@ -3,12 +3,12 @@ from package.kb import GConceptNetCS
 from package.sent import SentParser, SentSimi, SentMaker, join_sents
 from package.qa import MaskedQA
 
-q = 'Elephants like to eat [MASK].'
+q = 'Lions like to eat [MASK].'
 
 # 解析问题中的实体
 # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
 parser = SentParser()
-entity = parser.parse(q)
+entity = parser.parse(q.replace('[MASK]', ''))
 print('Parsing sentence:', entity)
 
 # 链接至常识图谱

@@ -2,8 +2,8 @@
 from package.gstore import GStore
 import json
 
-CST = ('AtLocation', 'CapableOf', 'Causes', 'CausesDesire', 'CreatedBy', 'Desires', 'HasA', 'HasFirstSubevent',
-       'HasLastSubevent', 'HasPrerequisite', 'HasProperty', 'HasSubEvent', 'nstanceOf', 'MadeOf', 'MotivatedByGoal',
+CST = ('AtLocation', 'CapableOf', 'Causes', 'CausesDesire', 'CreatedBy', 'Desires', 'HasA', 'HasFirstSubevent', 'DefinedAs',
+       'HasLastSubevent', 'HasPrerequisite', 'HasProperty', 'HasSubEvent', 'InstanceOf', 'MadeOf', 'MotivatedByGoal',
        'UsedFor', 'PartOf', 'ReceivesAction')
 
 

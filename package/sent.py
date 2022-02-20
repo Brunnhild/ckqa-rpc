@@ -41,8 +41,8 @@ class SentSimi:
         self._model_sent = SentenceTransformer('distiluse-base-multilingual-cased-v1', device=device).eval()
 
     def _encode(self, sentences, batch_size=128):
-
-        sentences = [s.replace('_', ' ') for s in sentences] if isinstance(sentences, list) else sentences.replace('_', ' ')
+        sentences = [s.replace('_', ' ') for s in sentences] if isinstance(sentences, list) else sentences.replace('_',
+                                                                                                                   ' ')
         return self._model_sent.encode(sentences, batch_size=batch_size)
 
     @torch.no_grad()
@@ -63,7 +63,9 @@ class SentSimi:
         key = self._encode(ks, batch_size=batch_size)
 
         confi = util.pytorch_cos_sim(query, key)
-        _, idx = torch.topk(confi, k)
+
+        n = confi.size(-1)
+        _, idx = torch.topk(confi, min(k, n))
 
         return [ks[i] for i in idx.tolist()[0]]
 
@@ -127,47 +129,47 @@ class SentMaker:
             return self.template[p].format(s=s, o=o).capitalize().replace('_', ' ')
 
     template_zh = {'Antonym': '{s}和{o}是反义词',
-                'AtLocation': '{s}位于{o}',
-                'CapableOf': '{s}能够{o}',
-                'Capital': '{o}是{s}的首都',
-                'Causes': '{s}导致{o}',
-                'CausesDesire': '{s}让某人想要{o}',
-                'CreatedBy': '{s}是由{o}创造',
-                'DefinedAs': '{s}被定义为{o}',
-                'DerivedFrom': '{s}源自于{o}',
-                'Desires': '{s}想要{o}',
-                'DistinctFrom': '{s}区别于{o}',
-                'EtymologicallyDerivedFrom': '{s}源自于{o}',
-                'EtymologicallyRelatedTo': '{s}与{o}有关',
-                'Field': '{o}是{s}的领域',
-                'FormOf': '{s}是{o}的一种形式',
-                'Genre': '{o}是{s}一种类型',
-                'Genus': '{s}是{o}一种属',
-                'HasA': '{o}是{s}的一部分',
-                'HasContext': '{s}出现在{o}的上下文中',
-                'HasFirstSubevent': '{s}以{o}作为开始',
-                'HasLastSubevent': '{s}以{o}作为结束',
-                'HasPrerequisite': '为了达到{s},必须以{o}为前提',
-                'HasProperty': '{s}具有{o}的特点',
-                'HasSubEvent': '{s}中包含事件{o}',
-                'InfluencedBy': '{s}受{o}的影响',
-                'InstanceOf': '{s}是{o}的实例',
-                'IsA': '{s}是{o}',
-                'KnownFor': '{s}以{o}著称',
-                'Language': '{s}被语言{o}描述',
-                'Leader': '{o}是{s}的主导者',
-                'LocatedNear': '{s}和{o}出现在一起',
-                'MadeOf': '{s}由{o}组成',
-                'MannerOf': '{s}是一种达成{o}的方案',
-                'MotivatedByGoal': '{s}是实现{o}的一步',
-                'Occupation': '{o}的职业是{b}',
-                'PartOf': '{s}是{o}的一部分',
-                'Product': '{o}是{s}的产品',
-                'ReceivesAction': '{o}以便尝试着做{s}',
-                'SimilarTo': '{s}与{o}类似',
-                'SymbolOf': '{s}象征着{o}',
-                'Synonym': '{s}和{o}在语义上相似',
-                'UsedFor': '{s}被用于{o}'}
+                   'AtLocation': '{s}位于{o}',
+                   'CapableOf': '{s}能够{o}',
+                   'Capital': '{o}是{s}的首都',
+                   'Causes': '{s}导致{o}',
+                   'CausesDesire': '{s}让某人想要{o}',
+                   'CreatedBy': '{s}是由{o}创造',
+                   'DefinedAs': '{s}被定义为{o}',
+                   'DerivedFrom': '{s}源自于{o}',
+                   'Desires': '{s}想要{o}',
+                   'DistinctFrom': '{s}区别于{o}',
+                   'EtymologicallyDerivedFrom': '{s}源自于{o}',
+                   'EtymologicallyRelatedTo': '{s}与{o}有关',
+                   'Field': '{o}是{s}的领域',
+                   'FormOf': '{s}是{o}的一种形式',
+                   'Genre': '{o}是{s}一种类型',
+                   'Genus': '{s}是{o}一种属',
+                   'HasA': '{o}是{s}的一部分',
+                   'HasContext': '{s}出现在{o}的上下文中',
+                   'HasFirstSubevent': '{s}以{o}作为开始',
+                   'HasLastSubevent': '{s}以{o}作为结束',
+                   'HasPrerequisite': '为了达到{s},必须以{o}为前提',
+                   'HasProperty': '{s}具有{o}的特点',
+                   'HasSubEvent': '{s}中包含事件{o}',
+                   'InfluencedBy': '{s}受{o}的影响',
+                   'InstanceOf': '{s}是{o}的实例',
+                   'IsA': '{s}是{o}',
+                   'KnownFor': '{s}以{o}著称',
+                   'Language': '{s}被语言{o}描述',
+                   'Leader': '{o}是{s}的主导者',
+                   'LocatedNear': '{s}和{o}出现在一起',
+                   'MadeOf': '{s}由{o}组成',
+                   'MannerOf': '{s}是一种达成{o}的方案',
+                   'MotivatedByGoal': '{s}是实现{o}的一步',
+                   'Occupation': '{o}的职业是{b}',
+                   'PartOf': '{s}是{o}的一部分',
+                   'Product': '{o}是{s}的产品',
+                   'ReceivesAction': '{o}以便尝试着做{s}',
+                   'SimilarTo': '{s}与{o}类似',
+                   'SymbolOf': '{s}象征着{o}',
+                   'Synonym': '{s}和{o}在语义上相似',
+                   'UsedFor': '{s}被用于{o}'}
 
     def lexicalize_zh(self, triple):
         s, p, o = triple

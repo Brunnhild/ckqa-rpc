@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 from package.kb import GConceptNetCS
 from package.sent import SentParser, SentSimi, SentMaker, join_sents
-from package.qa import MaskedQA
+from package.qa import SpanQA
 
-q = 'Elephants like to eat [MASK].'
+q = '大象喜欢吃什么？'
 
 # 解析问题中的实体
 # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
-parser = SentParser()
+parser = SentParser(name='zh_core_web_sm')
 entity = parser.parse(q)
 print('Parsing sentence:', entity)
 
@@ -21,16 +21,15 @@ print('Context triple:', context)
 
 # 将检索到的三元组组合成自然语言
 maker = SentMaker()
-context = [maker.lexicalize(triple) for triple in context]
+context = [maker.lexicalize_zh(triple) for triple in context]
 print('Context sentence:', context)
 
 context_sim = SentSimi()
 context = context_sim.lookup(q, context, k=5)
 print('Query-related sentence:', context)
 
-engine = MaskedQA('roberta-large')
-q = q.replace('[MASK]', engine.mask_token)
-context = join_sents(context)
+engine = SpanQA('luhua/chinese_pretrain_mrc_roberta_wwm_ext_large')
+context = join_sents(context, lang='zh')
 result = engine(q, context)
 
 print(result)

@@ -3,7 +3,7 @@ from package.kb import GConceptNetCS
 from package.sent import SentParser, SentSimi, SentMaker, join_sents
 from package.qa import MaskedQA
 
-q = '狮子最喜欢吃[MASK]。'
+q = '狮子最喜欢吃[MASK][MASK][MASK]。'
 
 # 解析问题中的实体
 # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。

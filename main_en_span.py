@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 from package.kb import GConceptNetCS
 from package.sent import SentParser, SentSimi, SentMaker, join_sents
-from package.qa import MaskedQA
+from package.qa import SpanQA
 
-q = 'Elephants like to eat [MASK].'
+q = 'where do lions live ?'
 
 # 解析问题中的实体
 # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
@@ -28,8 +28,7 @@ context_sim = SentSimi()
 context = context_sim.lookup(q, context, k=5)
 print('Query-related sentence:', context)
 
-engine = MaskedQA('roberta-large')
-q = q.replace('[MASK]', engine.mask_token)
+engine = SpanQA('mrm8488/spanbert-finetuned-squadv2')
 context = join_sents(context)
 result = engine(q, context)
 
