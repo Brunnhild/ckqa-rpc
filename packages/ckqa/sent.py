@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from package.machine import Machine
+from packages.ckqa.machine import Machine
 from sentence_transformers import SentenceTransformer, util, models
 from sklearn.decomposition import PCA
 from nltk.stem import WordNetLemmatizer

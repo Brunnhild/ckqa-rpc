@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from package.gstore import GStore
+from packages.ckqa.gstore import GStore
 import json
 
 CST = ('AtLocation', 'CapableOf', 'Causes', 'CausesDesire', 'CreatedBy', 'Desires', 'HasA', 'HasFirstSubevent', 'DefinedAs',

@@ -2,20 +2,29 @@ import sys
 from urllib import parse
 sys.path.append('service/gen-py')
 from ckqa import CKQA
-from ckqa.ttypes import Result
+from ckqa.ttypes import Result, Tuple
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.server import TServer
 
 # -*- coding: utf-8 -*-
-from package.kb import GConceptNetCS
-from package.sent import SentParser, SentSimi, SentMaker, join_sents
-from package.qa import MaskedQA, SpanQA
+from packages.ckqa.kb import GConceptNetCS
+from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
+from packages.ckqa.qa import MaskedQA, SpanQA
 
-from wobert import WoBertTokenizer
 
-class CKQAHandler:
+# from wobert import WoBertTokenizer
+
+from transformers import T5TokenizerFast
+
+from packages.choice.model import T5PromptTuningForConditionalGeneration
+from packages.choice.standalone import Standalone
+
+import os
+
+
+class RPCHandler:
     def __init__(self) -> None:
         pass
 
@@ -176,49 +185,67 @@ class CKQAHandler:
         else:
             return self.getSpanResultChinese(q)
 
-    def getMaskWordResult(self, query):
-        q = parse.unquote(query)
+    # def getMaskWordResult(self, query):
+    #     q = parse.unquote(query)
+    #
+    #     # 解析问题中的实体
+    #     # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
+    #     parser = SentParser(name='zh_core_web_sm')
+    #     entity = parser.parse(q.replace('[MASK]', ''))
+    #     print('Parsing sentence:', entity)
+    #
+    #     # 链接至常识图谱
+    #     # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
+    #     kb = GConceptNetCS('192.168.10.174')
+    #     context = []
+    #     for e in entity:
+    #         context.extend(kb.query(e))
+    #     print('Context triple:', context)
+    #
+    #     # 将检索到的三元组组合成自然语言
+    #     maker = SentMaker()
+    #     context = [maker.lexicalize_zh(triple) for triple in context]
+    #     print('Context sentence:', context)
+    #
+    #     context_sim = SentSimi()
+    #     context = context_sim.lookup(q, context, k=5)
+    #     print('Query-related sentence:', context)
+    #
+    #     engine = MaskedQA('junnyu/wobert_chinese_plus_base', WoBertTokenizer)
+    #     q = q.replace('[MASK]', engine.mask_token)
+    #     context = join_sents(context, lang='zh')
+    #
+    #     result = engine(q, context)
+    #     result_without_context = engine(q, '')
+    #
+    #     print(result_without_context)
+    #     print(result)
+    #
+    #     return [Result('none', result_without_context, ''), Result('ckqa', result, context)]
 
-        # 解析问题中的实体
-        # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
-        parser = SentParser(name='zh_core_web_sm')
-        entity = parser.parse(q.replace('[MASK]', ''))
-        print('Parsing sentence:', entity)
+    def getExtraction(self, query):
+        path_to_model = 'packages/choice/ipoie'
+        max_step = 10
+        device = -1
 
-        # 链接至常识图谱
-        # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-        kb = GConceptNetCS('192.168.10.174')
-        context = []
-        for e in entity:
-            context.extend(kb.query(e))
-        print('Context triple:', context)
+        tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
+        model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
 
-        # 将检索到的三元组组合成自然语言
-        maker = SentMaker()
-        context = [maker.lexicalize_zh(triple) for triple in context]
-        print('Context sentence:', context)
+        standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
+        extraction = standalone.pipeline([query], batch_size=32)
 
-        context_sim = SentSimi()
-        context = context_sim.lookup(q, context, k=5)
-        print('Query-related sentence:', context)
-
-        engine = MaskedQA('junnyu/wobert_chinese_plus_base', WoBertTokenizer)
-        q = q.replace('[MASK]', engine.mask_token)
-        context = join_sents(context, lang='zh')
-
-        result = engine(q, context)
-        result_without_context = engine(q, '')
-
-        print(result_without_context)
-        print(result)
-
-        return [Result('none', result_without_context, ''), Result('ckqa', result, context)]
+        res = map(lambda x: Tuple(x[0], x[1]), extraction[query].items())
+        return list(res)
 
 
 if __name__ == '__main__':
-    handler = CKQAHandler()
+    pid = os.getpid()
+    with open('./pid', 'w') as f:
+        f.write(str(pid))
+
+    handler = RPCHandler()
     processor = CKQA.Processor(handler)
-    transport = TSocket.TServerSocket(host='192.168.10.162', port=8327)
+    transport = TSocket.TServerSocket(host='0.0.0.0', port=8327)
     tfactory = TTransport.TBufferedTransportFactory()
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 

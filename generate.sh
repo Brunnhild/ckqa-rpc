@@ -1,4 +1,7 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
-rm ./service/gen-py/* -f
+if [ -d "./service/gen-py" ]
+then
+  rm -rf ./service/gen-py/*
+fi
 thrift -o ./service -r --gen py ckqa.thrift

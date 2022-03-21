@@ -141,3 +141,7 @@ cython_debug/
 .idea/
 
 service/gen-py/
+packages/choice/ipoie
+
+*.tar.gz
+.DS_Store
