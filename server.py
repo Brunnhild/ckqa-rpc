@@ -13,7 +13,6 @@ from packages.ckqa.kb import GConceptNetCS
 from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
 from packages.ckqa.qa import MaskedQA, SpanQA
 
-
 # from wobert import WoBertTokenizer
 
 from transformers import T5TokenizerFast
@@ -22,6 +21,8 @@ from packages.choice.model import T5PromptTuningForConditionalGeneration
 from packages.choice.standalone import Standalone
 
 import os
+
+from sentence_transformers import SentenceTransformer
 
 
 class RPCHandler:
@@ -234,7 +235,11 @@ class RPCHandler:
         standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
         extraction = standalone.pipeline([query], batch_size=32)
 
-        res = map(lambda x: Tuple(x[0], x[1]), extraction[query].items())
+        def get_embedding(items):
+            model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+            return model.encode(items[1] + items[0] + items[3])
+
+        res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
 
 
