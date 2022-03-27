@@ -237,7 +237,7 @@ class RPCHandler:
 
         def get_embedding(items):
             model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
-            return model.encode(items[1] + items[0] + items[3])
+            return model.encode(items[1] + items[0] + items[2])
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
