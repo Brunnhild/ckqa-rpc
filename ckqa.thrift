@@ -14,9 +14,12 @@ struct Tuple {
 
 service CKQA
 {
-    list<Result> getMaskResult(1:string query);
+    list<Result> getMaskResult(1:string query, 2:bool includeNone, 3:bool includeCSKG);
     list<Result> getSpanResult(1:string query);
     list<Result> getMaskWordResult(1:string query);
+    list<Result> getTextQaResult(1:string query, 2:string text);
 
     list<Tuple> getExtraction(1:string query);
+
+    list<double> getEntailment(1:string premise, 2:list<string> hypothesises);
 }

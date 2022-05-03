@@ -10,18 +10,22 @@ from thrift.server import TServer
 
 # -*- coding: utf-8 -*-
 from packages.ckqa.kb import GConceptNetCS
+from packages.ckqa.es import ES
 from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
 from packages.ckqa.qa import MaskedQA, SpanQA
-
 
 # from wobert import WoBertTokenizer
 
 from transformers import T5TokenizerFast
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
 
 from packages.choice.model import T5PromptTuningForConditionalGeneration
 from packages.choice.standalone import Standalone
 
 import os
+
+from sentence_transformers import SentenceTransformer
 
 
 class RPCHandler:
@@ -34,7 +38,7 @@ class RPCHandler:
         else:
             return 'zh'
 
-    def getMaskResultEnglish(self, q):
+    def getMaskResultEnglish(self, q, includeNone, includeCSKG):
         # 解析问题中的实体
         # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
         parser = SentParser()
@@ -43,10 +47,10 @@ class RPCHandler:
 
         # 链接至常识图谱
         # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-        kb = GConceptNetCS('192.168.10.174')
+        es = ES()
         context = []
         for e in entity:
-            context.extend(kb.query(e))
+            context.extend(es.query(e))
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -61,15 +65,20 @@ class RPCHandler:
         engine = MaskedQA('roberta-large')
         q = q.replace('[MASK]', engine.mask_token)
         context = join_sents(context)
-        result = engine(q, context)
-        result_without_context = engine(q, '')
 
-        print(result_without_context)
-        print(result)
+        res = []
+        if includeNone:
+            result_without_context = engine(q, '')
+            print(result_without_context)
+            res.append(Result('none', result_without_context, ''))
+        if includeCSKG:
+            result = engine(q, context)
+            print(result)
+            res.append(Result('ckqa', result, context))
 
-        return [Result('none', result_without_context, ''), Result('ckqa', result, context)]
+        return res
 
-    def getMaskResultChinese(self, q):
+    def getMaskResultChinese(self, q, includeNone, includeCSKG):
         # 解析问题中的实体
         # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
         parser = SentParser(name='zh_core_web_sm')
@@ -78,10 +87,10 @@ class RPCHandler:
 
         # 链接至常识图谱
         # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-        kb = GConceptNetCS('192.168.10.174')
+        es = ES()
         context = []
         for e in entity:
-            context.extend(kb.query(e))
+            context.extend(es.query(e))
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -96,13 +105,18 @@ class RPCHandler:
         engine = MaskedQA('hfl/chinese-roberta-wwm-ext')
         q = q.replace('[MASK]', engine.mask_token)
         context = join_sents(context, lang='zh')
-        result = engine(q, context)
-        result_without_context = engine(q, '')
 
-        print(result_without_context)
-        print(result)
+        res = []
+        if includeNone:
+            result_without_context = engine(q, '')
+            print(result_without_context)
+            res.append(Result('none', result_without_context, ''))
+        if includeCSKG:
+            result = engine(q, context)
+            print(result)
+            res.append(Result('ckqa', result, context))
 
-        return [Result('none', result_without_context, ''), Result('ckqa', result, context)]
+        return res
 
     def getSpanResultChinese(self, q):
         # 解析问题中的实体
@@ -168,13 +182,13 @@ class RPCHandler:
 
         return [Result('ckqa', [result], context)]
 
-    def getMaskResult(self, query):
+    def getMaskResult(self, query, includeNone, includeCSKG):
         q = parse.unquote(query)
 
         if self.getLang(q) == 'en':
-            return self.getMaskResultEnglish(q)
+            return self.getMaskResultEnglish(q, includeNone, includeCSKG)
         else:
-            return self.getMaskResultChinese(q)
+            return self.getMaskResultChinese(q, includeNone, includeCSKG)
 
     def getSpanResult(self, query):
         # q = 'Lions like to eat [MASK].'
@@ -184,6 +198,34 @@ class RPCHandler:
             return self.getSpanResultEnglish(q)
         else:
             return self.getSpanResultChinese(q)
+
+    def getTextQaResult(self, query, text):
+        path_to_model = 'packages/choice/ipoie'
+        max_step = 10
+        device = -1
+
+        tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
+        model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
+
+        standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
+        extraction = standalone.pipeline([text], batch_size=32)
+
+        triples = map(lambda x: (x[0][1], x[0][0], x[0][2]), extraction[text].items())
+        # 将检索到的三元组组合成自然语言
+        maker = SentMaker()
+        context = [maker.lexicalize(triple) for triple in triples]
+        print('Context sentence:', context)
+
+        context_sim = SentSimi()
+        context = context_sim.lookup(query, context, k=5)
+        print('Query-related sentence:', context)
+
+        engine = MaskedQA('roberta-large')
+        query = query.replace('[MASK]', engine.mask_token)
+        context = join_sents(context)
+        result = engine(query, context)
+
+        return [Result('ckqa', result, context)]
 
     # def getMaskWordResult(self, query):
     #     q = parse.unquote(query)
@@ -234,8 +276,36 @@ class RPCHandler:
         standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
         extraction = standalone.pipeline([query], batch_size=32)
 
-        res = map(lambda x: Tuple(x[0], x[1]), extraction[query].items())
+        def get_embedding(items):
+            model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            return model.encode(items[1] + items[0] + items[2])
+
+        res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
+
+    def getEntailment(self, premise, hypothesises):
+        print(hypothesises)
+        # pose sequence as a NLI premise and label as a hypothesis
+        nli_model = AutoModelForSequenceClassification.from_pretrained('facebook/bart-large-mnli')
+        tokenizer = AutoTokenizer.from_pretrained('facebook/bart-large-mnli')
+
+        res = []
+        for hypothesis in hypothesises:
+            # run through model pre-trained on MNLI
+            with torch.no_grad():
+                x = tokenizer.encode(premise, hypothesis, return_tensors='pt',
+                                    truncation_strategy='only_first')
+                logits = nli_model(x)[0]
+
+                # we throw away "neutral" (dim 1) and take the probability of
+                # "entailment" (2) as the probability of the label being true 
+                entail_contradiction_logits = logits[:,[0,2]]
+                probs = entail_contradiction_logits.softmax(dim=1)
+                prob_label_is_true = probs[:,1]
+
+                res.append(prob_label_is_true.item())
+        
+        return res
 
 
 if __name__ == '__main__':
