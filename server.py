@@ -13,12 +13,12 @@ from packages.ckqa.kb import GConceptNetCS
 from packages.ckqa.es import ES
 from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
 from packages.ckqa.qa import MaskedQA, SpanQA
+from packages.ckqa.v2cTry import v2cPrint
+from HybridNet.main_process import process
 
 # from wobert import WoBertTokenizer
 
 from transformers import T5TokenizerFast
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-import torch
 
 from packages.choice.model import T5PromptTuningForConditionalGeneration
 from packages.choice.standalone import Standalone
@@ -277,36 +277,24 @@ class RPCHandler:
         extraction = standalone.pipeline([query], batch_size=32)
 
         def get_embedding(items):
-            model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
             return model.encode(items[1] + items[0] + items[2])
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
-
-    def getEntailment(self, premise, hypothesises):
-        print(hypothesises)
-        # pose sequence as a NLI premise and label as a hypothesis
-        nli_model = AutoModelForSequenceClassification.from_pretrained('facebook/bart-large-mnli')
-        tokenizer = AutoTokenizer.from_pretrained('facebook/bart-large-mnli')
-
-        res = []
-        for hypothesis in hypothesises:
-            # run through model pre-trained on MNLI
-            with torch.no_grad():
-                x = tokenizer.encode(premise, hypothesis, return_tensors='pt',
-                                    truncation_strategy='only_first')
-                logits = nli_model(x)[0]
-
-                # we throw away "neutral" (dim 1) and take the probability of
-                # "entailment" (2) as the probability of the label being true 
-                entail_contradiction_logits = logits[:,[0,2]]
-                probs = entail_contradiction_logits.softmax(dim=1)
-                prob_label_is_true = probs[:,1]
-
-                res.append(prob_label_is_true.item())
+    def get_cms(self,query,video):
+        #cms,queries=v2cPrint(query,video)
+        cms,queries=process(query,video)
+        print("server cms:")
+        print(cms)
+        print("server queries:")
+        print(queries)
         
-        return res
-
+        cms['query1'] = queries[0]
+        cms['query2'] = queries[1]
+        cms['query3'] = queries[2]
+        cms['video'] = "video"+str(video)
+        return cms
 
 if __name__ == '__main__':
     pid = os.getpid()
