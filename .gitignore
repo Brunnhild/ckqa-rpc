@@ -145,3 +145,6 @@ packages/choice/ipoie
 
 *.tar.gz
 .DS_Store
+
+nohup*
+pid
