@@ -12,7 +12,7 @@ from thrift.server import TServer
 from packages.ckqa.kb import GConceptNetCS
 from packages.ckqa.es import ES
 from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
-from packages.ckqa.qa import MaskedQA, SpanQA
+from packages.ckqa.qa import MaskedQA, SpanQA, FreeQA
 from packages.ckqa.v2cTry import v2cPrint
 from HybridNet.main_process import process
 
@@ -102,8 +102,7 @@ class RPCHandler:
         context = context_sim.lookup(q, context, k=5)
         print('Query-related sentence:', context)
 
-        engine = MaskedQA('hfl/chinese-roberta-wwm-ext')
-        q = q.replace('[MASK]', engine.mask_token)
+        engine = FreeQA('fnlp/bart-base-chinese')
         context = join_sents(context, lang='zh')
 
         res = []
@@ -277,7 +276,7 @@ class RPCHandler:
         extraction = standalone.pipeline([query], batch_size=32)
 
         def get_embedding(items):
-            model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+            model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
             return model.encode(items[1] + items[0] + items[2])
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())

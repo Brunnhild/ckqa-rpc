@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from transformers import (AutoTokenizer,
                           AutoModelForQuestionAnswering, AutoModelForMaskedLM, AutoModelForCausalLM,
+                          BertTokenizer, BartForConditionalGeneration,
                           top_k_top_p_filtering)
 import torch
 
@@ -101,20 +102,25 @@ class FreeQA(torch.nn.Module):
 
     def __init__(self, pretrained_model_name_or_path):
         super(FreeQA, self).__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
-        self.model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path).eval()
+        self.tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path)
+        self.model = BartForConditionalGeneration.from_pretrained(pretrained_model_name_or_path).eval()
 
-    def forward(self, question, context):
-        return self.predict(question, context)
+    def forward(self, question, context, top_k=10):
+        return self.predict(question, context, top_k)
 
     @torch.no_grad()
-    def predict(self, question, context):
-        inputs = self.tokenizer.encode(context + ' <eod> </s> <eos>' + question,
-                                       add_special_tokens=False, return_tensors="pt")
+    def predict(self, question, context, top_k):
+        inputs = self.tokenizer(question, context, return_tensors="pt")
+        outputs = self.model.generate(input_ids=inputs.input_ids,
+                                      attention_mask=inputs.attention_mask,
+                                      max_length=512,
+                                      num_beams=top_k,
+                                      num_return_sequences=top_k)
+        ans = []
+        start_mask = question.find('[MASK]')
+        for output in outputs:
+            tokens = self.tokenizer.convert_ids_to_tokens(output, skip_special_tokens=True)
+            diff = len(tokens) - len(question) + 6
+            ans.append(''.join(tokens[start_mask:start_mask + diff]))
 
-        prompt_length = len(
-            self.tokenizer.decode(inputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True))
-        outputs = self.model.generate(inputs, max_length=250, do_sample=True, top_p=0.95, top_k=60)
-        generated = self.tokenizer.decode(outputs[0])[prompt_length:]
-
-        return generated
+        return ans
