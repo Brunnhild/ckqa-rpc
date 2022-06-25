@@ -4,10 +4,10 @@ from elasticsearch7 import Elasticsearch
 
 class ES:
     def __init__(self):
-        self.es = Elasticsearch(hosts='http://127.0.0.1:9200')
+        self.es = Elasticsearch(hosts='http://192.168.10.162:9200')
 
-    def query(self, entity):
-        resp = self.es.search(index='cskg_vector', query={
+    def query(self, entity, index='cskg_vector_new_purge', size=3000):
+        resp = self.es.search(index=index, size=size, query={
             'bool': {
                 'should': [
                     {

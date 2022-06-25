@@ -18,7 +18,8 @@ from HybridNet.main_process import process
 
 # from wobert import WoBertTokenizer
 
-from transformers import T5TokenizerFast
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, T5TokenizerFast
+import torch
 
 from packages.choice.model import T5PromptTuningForConditionalGeneration
 from packages.choice.standalone import Standalone
@@ -50,7 +51,7 @@ class RPCHandler:
         es = ES()
         context = []
         for e in entity:
-            context.extend(es.query(e))
+            context.extend(es.query(e, size=None))
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -59,7 +60,7 @@ class RPCHandler:
         print('Context sentence:', context)
 
         context_sim = SentSimi()
-        context = context_sim.lookup(q, context, k=5)
+        context, _ = context_sim.lookup(q, context, k=10)
         print('Query-related sentence:', context)
 
         engine = MaskedQA('roberta-large')
@@ -81,7 +82,7 @@ class RPCHandler:
     def getMaskResultChinese(self, q, includeNone, includeCSKG):
         # 解析问题中的实体
         # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
-        parser = SentParser(name='zh_core_web_sm')
+        parser = SentParser(name='zh_core_web_sm', user_dict=[])
         entity = parser.parse(q.replace('[MASK]', ''))
         print('Parsing sentence:', entity)
 
@@ -90,7 +91,7 @@ class RPCHandler:
         es = ES()
         context = []
         for e in entity:
-            context.extend(es.query(e))
+            context.extend(es.query(e, size=None))
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -99,7 +100,7 @@ class RPCHandler:
         print('Context sentence:', context)
 
         context_sim = SentSimi()
-        context = context_sim.lookup(q, context, k=5)
+        context, _ = context_sim.lookup(q, context, k=10)
         print('Query-related sentence:', context)
 
         engine = FreeQA('fnlp/bart-base-chinese')
@@ -281,6 +282,31 @@ class RPCHandler:
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
+
+    def getEntailment(self, premise, hypothesises):
+        print(hypothesises)
+        # pose sequence as a NLI premise and label as a hypothesis
+        nli_model = AutoModelForSequenceClassification.from_pretrained('facebook/bart-large-mnli')
+        tokenizer = AutoTokenizer.from_pretrained('facebook/bart-large-mnli')
+
+        res = []
+        for hypothesis in hypothesises:
+            # run through model pre-trained on MNLI
+            with torch.no_grad():
+                x = tokenizer.encode(premise, hypothesis, return_tensors='pt',
+                                     truncation_strategy='only_first')
+                logits = nli_model(x)[0]
+
+                # we throw away "neutral" (dim 1) and take the probability of
+                # "entailment" (2) as the probability of the label being true
+                entail_contradiction_logits = logits[:, [0, 2]]
+                probs = entail_contradiction_logits.softmax(dim=1)
+                prob_label_is_true = probs[:, 1]
+
+                res.append(prob_label_is_true.item())
+
+        return res
+
     def get_cms(self,query,video):
         #cms,queries=v2cPrint(query,video)
         cms,queries=process(query,video)
