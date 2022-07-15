@@ -12,6 +12,11 @@ struct Tuple {
     3: required list<double> vector;
 }
 
+struct Scale {
+	1: required i32 entityCount;
+	2: required i32 entityCountCn;
+}
+
 service CKQA
 {
     list<Result> getMaskResult(1:string query, 2:bool includeNone, 3:bool includeCSKG);
@@ -20,8 +25,9 @@ service CKQA
     list<Result> getTextQaResult(1:string query, 2:string text);
 
     list<Tuple> getExtraction(1:string query);
-
     list<double> getEntailment(1:string premise, 2:list<string> hypothesises);
 
     map<string,string> get_cms(1:string query,2:i32 video);
+
+    Scale getScale();
 }

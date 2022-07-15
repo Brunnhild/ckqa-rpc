@@ -2,7 +2,7 @@ import sys
 from urllib import parse
 sys.path.append('service/gen-py')
 from ckqa import CKQA
-from ckqa.ttypes import Result, Tuple
+from ckqa.ttypes import Result, Tuple, Scale
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
@@ -28,6 +28,8 @@ import os
 
 from sentence_transformers import SentenceTransformer
 
+from elasticsearch7.helpers import scan
+
 
 class RPCHandler:
     def __init__(self) -> None:
@@ -38,6 +40,18 @@ class RPCHandler:
             return 'en'
         else:
             return 'zh'
+
+    def deduplicate(self, triple_list):
+        all_set = set()
+        res = []
+        for triple in triple_list:
+            if triple[0] == triple[2]:
+                continue
+            q = ''.join(triple)
+            if q not in all_set:
+                all_set.add(q)
+                res.append(triple)
+        return res
 
     def getMaskResultEnglish(self, q, includeNone, includeCSKG):
         # 解析问题中的实体
@@ -52,6 +66,7 @@ class RPCHandler:
         context = []
         for e in entity:
             context.extend(es.query(e, size=None))
+        context = self.deduplicate(context)
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -92,6 +107,7 @@ class RPCHandler:
         context = []
         for e in entity:
             context.extend(es.query(e, size=None))
+        context = self.deduplicate(context)
         print('Context triple:', context)
 
         # 将检索到的三元组组合成自然语言
@@ -103,18 +119,18 @@ class RPCHandler:
         context, _ = context_sim.lookup(q, context, k=10)
         print('Query-related sentence:', context)
 
-        engine = FreeQA('fnlp/bart-base-chinese')
+        engine = FreeQA('/mnt/ssd/wyt/transformers_models/bart-base-chinese')
         context = join_sents(context, lang='zh')
 
         res = []
         if includeNone:
             result_without_context = engine(q, '')
             print(result_without_context)
-            res.append(Result('none', result_without_context, ''))
+            res.append(Result('None', result_without_context, ''))
         if includeCSKG:
             result = engine(q, context)
             print(result)
-            res.append(Result('ckqa', result, context))
+            res.append(Result('CSKG', result, context))
 
         return res
 
@@ -217,15 +233,14 @@ class RPCHandler:
         print('Context sentence:', context)
 
         context_sim = SentSimi()
-        context = context_sim.lookup(query, context, k=5)
+        context, _ = context_sim.lookup(query, context, k=5)
         print('Query-related sentence:', context)
 
-        engine = MaskedQA('roberta-large')
-        query = query.replace('[MASK]', engine.mask_token)
-        context = join_sents(context)
+        engine = FreeQA('/mnt/ssd/wyt/transformers_models/bart-base-chinese')
+        context = join_sents(context, lang='zh')
         result = engine(query, context)
 
-        return [Result('ckqa', result, context)]
+        return [Result('Text', result, context)]
 
     # def getMaskWordResult(self, query):
     #     q = parse.unquote(query)
@@ -277,17 +292,16 @@ class RPCHandler:
         extraction = standalone.pipeline([query], batch_size=32)
 
         def get_embedding(items):
-            model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            model = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2')
             return model.encode(items[1] + items[0] + items[2])
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
 
     def getEntailment(self, premise, hypothesises):
-        print(hypothesises)
         # pose sequence as a NLI premise and label as a hypothesis
-        nli_model = AutoModelForSequenceClassification.from_pretrained('facebook/bart-large-mnli')
-        tokenizer = AutoTokenizer.from_pretrained('facebook/bart-large-mnli')
+        nli_model = AutoModelForSequenceClassification.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
+        tokenizer = AutoTokenizer.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
 
         res = []
         for hypothesis in hypothesises:
@@ -320,6 +334,35 @@ class RPCHandler:
         cms['query3'] = queries[2]
         cms['video'] = "video"+str(video)
         return cms
+
+    def getScale(self):
+        all_entities = {}
+        all_entities_count = 0
+        all_entities_count_cn = 0
+
+        es = ES()
+
+        res = scan(
+            client=es.es,
+            index=es.index,
+            query={
+                'query': {
+                    'match_all': {}
+                }
+            }
+        )
+
+        for item in res:
+            source = item['_source']
+            for ent in [source['subject'], source['object']]:
+                if ent not in all_entities:
+                    all_entities[ent] = True
+                    all_entities_count += 1
+                    if source['lang'] == 'zh':
+                        all_entities_count_cn += 1
+
+        return Scale(all_entities_count, all_entities_count_cn)
+
 
 if __name__ == '__main__':
     pid = os.getpid()

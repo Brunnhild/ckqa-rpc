@@ -26,8 +26,9 @@ class SentParser:
 
     def parse(self, text):
 
+        tokens = self._model_spacy(text)
         ents = [(token.text, token.idx, token.idx + len(token.text))
-                for token in self._model_spacy(text) if token.pos_ == 'NOUN']
+                for token in tokens if token.pos_ == 'NOUN' or token.pos_ == 'VERB']
 
         if self.machine:
             ents += self.machine[text.lower()]
@@ -38,7 +39,7 @@ class SentParser:
 class SentSimi:
 
     def __init__(self, device=None):
-        self._model_sent = SentenceTransformer('distiluse-base-multilingual-cased-v1', device=device).eval()
+        self._model_sent = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_distiluse-base-multilingual-cased-v1', device=device).eval()
 
     def _encode(self, sentences, batch_size=128):
         sentences = [s.replace('_', ' ') for s in sentences] if isinstance(sentences, list) else sentences.replace('_',
@@ -58,7 +59,7 @@ class SentSimi:
         self._model_sent.add_module('dense', dense)
 
     @torch.no_grad()
-    def lookup(self, q, ks, k=5, batch_size=128):
+    def lookup(self, q, ks, k=5, batch_size=128, threshold=0.3):
         query = self._encode(q, batch_size=batch_size)
         key = self._encode(ks, batch_size=batch_size)
 
@@ -66,53 +67,57 @@ class SentSimi:
 
         n = confi.size(-1)
         _, idx = torch.topk(confi, min(k, n))
+        idx = idx.tolist()[0]
+        confi = confi.tolist()
+        idx = [i for i in idx if confi[0][i] > threshold]
 
-        return [ks[i] for i in idx.tolist()[0]]
+        return [ks[i] for i in idx], [confi[0][i] for i in idx]
 
 
 class SentMaker:
-    template = {'Antonym': '{s} and {o} are opposite',
-                'AtLocation': '{s} is located at {o}',
-                'CapableOf': '{s} is capable of {o}',
-                'Capital': '{o} is the captial of {s}',
-                'Causes': '{s} causes {o}',
-                'CausesDesire': '{s} makes someone want {o}',
-                'CreatedBy': '{s} is created by {o}',
-                'DefinedAs': '{s} is defined as {o}',
-                'DerivedFrom': '{s} is derived from {o}',
-                'Desires': '{s} desires {o}',
-                'DistinctFrom': '{s} is distinct from {o}',
-                'EtymologicallyDerivedFrom': '{s} is derived from {o}',
-                'EtymologicallyRelatedTo': '{s} is related to {o}',
-                'Field': '{o} is the field of {s}',
-                'FormOf': '{s} is an inflected form of {o}',
-                'Genre': '{o} is the genre of {s}',
-                'Genus': '{s} is the genus of {o}',
-                'HasA': '{s} has {o}',
-                'HasContext': '{s} is in the context of {o}',
-                'HasFirstSubevent': '{s} begins with the event {o}',
-                'HasLastSubevent': '{s} ends with the event {o}',
-                'HasPrerequisite': 'to do {s}, one requires {o}',
-                'HasProperty': '{s} can be characterized by having {o}',
-                'HasSubEvent': '{s} includes the event {o}',
-                'InfluencedBy': '{s} is influenced by {o}',
-                'InstanceOf': '{s} is an instance of {o}',
-                'IsA': '{s} is a {o}',
-                'KnownFor': '{s} is known for {o}',
-                'Language': '{s} is in language {o}',
-                'Leader': '{o} is the leader of {s}',
-                'LocatedNear': '{s} and {o} are found near each other',
-                'MadeOf': '{s} is made of {o}',
-                'MannerOf': '{s} is a specific way to do {o}',
-                'MotivatedByGoal': '{s} is a step towards accomplishing the goal {o}',
-                'Occupation': '{o} is the occupation of {b}',
-                'PartOf': '{s} is a part of {o}',
-                'Product': '{o} is the product of {s}',
-                'ReceivesAction': '{o} can be done to {s}',
-                'SimilarTo': '{s} is similar to {o}',
-                'SymbolOf': '{s} symbolically represents {o}',
-                'Synonym': '{s} and {o} have very similar meanings',
-                'UsedFor': '{s} is used for {o}'}
+    template = {'Antonym':                   '{s} and {o} are opposite',
+             'AtLocation':                '{s} is located at {o}',
+             'CapableOf':                 '{s} is capable of {o}',
+             'Capital':                   '{o} is the captial of {s}',
+             'Causes':                    '{s} causes {o}',
+             'CausesDesire':              '{s} makes someone want {o}',
+             'CreatedBy':                 '{s} is created by {o}',
+             'DefinedAs':                 '{s} is defined as {o}',
+             'DerivedFrom':               '{s} is derived from {o}',
+             'Desires':                   '{s} desires {o}',
+             'DistinctFrom':              '{s} is distinct from {o}',
+             'EtymologicallyDerivedFrom': '{s} is derived from {o}',
+             'EtymologicallyRelatedTo':   '{s} is related to {o}',
+             'Field':                     '{o} is the field of {s}',
+             'FormOf':                    '{s} is an inflected form of {o}',
+             'Genre':                     '{o} is the genre of {s}',
+             'Genus':                     '{s} is the genus of {o}',
+             'HasA':                      '{s} has {o}',
+             'HasContext':                '{s} is in the context of {o}',
+             'HasFirstSubevent':          '{s} begins with the event {o}',
+             'HasLastSubevent':           '{s} ends with the event {o}',
+             'HasPrerequisite':           'to do {s}, one requires {o}',
+             'HasProperty':               '{s} can be characterized by having {o}',
+             'HasSubEvent':               '{s} includes the event {o}',
+             'InfluencedBy':              '{s} is influenced by {o}',
+             'InstanceOf':                '{s} is an instance of {o}',
+             'IsA':                       '{s} is a {o}',
+             'KnownFor':                  '{s} is known for {o}',
+             'Language':                  '{s} is in language {o}',
+             'Leader':                    '{o} is the leader of {s}',
+             'LocatedNear':               '{s} and {o} are found near each other',
+             'MadeOf':                    '{s} is made of {o}',
+             'MannerOf':                  '{s} is a specific way to do {o}',
+             'MotivatedByGoal':           '{s} is a step towards accomplishing the goal {o}',
+             'Occupation':                '{o} is the occupation of {o}',
+             'PartOf':                    '{s} is a part of {o}',
+             'Product':                   '{o} is the product of {s}',
+             'ReceivesAction':            '{o} can be done to {s}',
+             'RelatedTo':                 '{s} is related to {o}',
+             'SimilarTo':                 '{s} is similar to {o}',
+             'SymbolOf':                  '{s} symbolically represents {o}',
+             'Synonym':                   '{s} and {o} have very similar meanings',
+             'UsedFor':                   '{s} is used for {o}'}
 
     def __init__(self):
         self.wnl = WordNetLemmatizer()
@@ -128,48 +133,49 @@ class SentMaker:
         else:
             return self.template[p].format(s=s, o=o).capitalize().replace('_', ' ')
 
-    template_zh = {'Antonym': '{s}和{o}是反义词',
-                   'AtLocation': '{s}位于{o}',
-                   'CapableOf': '{s}能够{o}',
-                   'Capital': '{o}是{s}的首都',
-                   'Causes': '{s}导致{o}',
-                   'CausesDesire': '{s}让某人想要{o}',
-                   'CreatedBy': '{s}是由{o}创造',
-                   'DefinedAs': '{s}被定义为{o}',
-                   'DerivedFrom': '{s}源自于{o}',
-                   'Desires': '{s}想要{o}',
-                   'DistinctFrom': '{s}区别于{o}',
-                   'EtymologicallyDerivedFrom': '{s}源自于{o}',
-                   'EtymologicallyRelatedTo': '{s}与{o}有关',
-                   'Field': '{o}是{s}的领域',
-                   'FormOf': '{s}是{o}的一种形式',
-                   'Genre': '{o}是{s}一种类型',
-                   'Genus': '{s}是{o}一种属',
-                   'HasA': '{o}是{s}的一部分',
-                   'HasContext': '{s}出现在{o}的上下文中',
-                   'HasFirstSubevent': '{s}以{o}作为开始',
-                   'HasLastSubevent': '{s}以{o}作为结束',
-                   'HasPrerequisite': '为了达到{s},必须以{o}为前提',
-                   'HasProperty': '{s}具有{o}的特点',
-                   'HasSubEvent': '{s}中包含事件{o}',
-                   'InfluencedBy': '{s}受{o}的影响',
-                   'InstanceOf': '{s}是{o}的实例',
-                   'IsA': '{s}是{o}',
-                   'KnownFor': '{s}以{o}著称',
-                   'Language': '{s}被语言{o}描述',
-                   'Leader': '{o}是{s}的主导者',
-                   'LocatedNear': '{s}和{o}出现在一起',
-                   'MadeOf': '{s}由{o}组成',
-                   'MannerOf': '{s}是一种达成{o}的方案',
-                   'MotivatedByGoal': '{s}是实现{o}的一步',
-                   'Occupation': '{o}的职业是{b}',
-                   'PartOf': '{s}是{o}的一部分',
-                   'Product': '{o}是{s}的产品',
-                   'ReceivesAction': '{o}以便尝试着做{s}',
-                   'SimilarTo': '{s}与{o}类似',
-                   'SymbolOf': '{s}象征着{o}',
-                   'Synonym': '{s}和{o}在语义上相似',
-                   'UsedFor': '{s}被用于{o}'}
+    template_zh = {'Antonym':                   '{s}和{o}是反义词',
+             'AtLocation':                '{s}位于{o}',
+             'CapableOf':                 '{s}能够{o}',
+             'Capital':                   '{o}是{s}的首都',
+             'Causes':                    '{s}导致{o}',
+             'CausesDesire':              '{s}让某人想要{o}',
+             'CreatedBy':                 '{s}是由{o}创造',
+             'DefinedAs':                 '{s}被定义为{o}',
+             'DerivedFrom':               '{s}源自于{o}',
+             'Desires':                   '{s}想要{o}',
+             'DistinctFrom':              '{s}区别于{o}',
+             'EtymologicallyDerivedFrom': '{s}源自于{o}',
+             'EtymologicallyRelatedTo':   '{s}与{o}有关',
+             'Field':                     '{o}是{s}的领域',
+             'FormOf':                    '{s}是{o}的一种形式',
+             'Genre':                     '{o}是{s}的一种类型',
+             'Genus':                     '{s}是{o}的一种动植物的属',
+             'HasA':                      '{o}是{s}的一部分',
+             'HasContext':                '{s}出现在{o}的上下文中',
+             'HasFirstSubevent':          '{s}以{o}作为开始',
+             'HasLastSubevent':           '{s}以{o}作为结束',
+             'HasPrerequisite':           '为了达到{s},必须以{o}为前提',
+             'HasProperty':               '{s}具有{o}的特点',
+             'HasSubEvent':               '{s}中包含事件{o}',
+             'InfluencedBy':              '{s}受{o}的影响',
+             'InstanceOf':                '{s}是{o}的实例',
+             'IsA':                       '{s}是{o}',
+             'KnownFor':                  '{s}以{o}著称',
+             'Language':                  '{s}被语言{o}描述',
+             'Leader':                    '{o}是{s}的领导者',
+             'LocatedNear':               '{s}和{o}一起出现',
+             'MadeOf':                    '{s}由{o}组成',
+             'MannerOf':                  '{s}是一种达成{o}的方案',
+             'MotivatedByGoal':           '{s}是实现{o}的一步',
+             'Occupation':                '{o}的职业是{o}',
+             'PartOf':                    '{s}是{o}的一部分',
+             'Product':                   '{o}是{s}的产品',
+             'ReceivesAction':            '{o}以便尝试着做{s}',
+             'RelatedTo':                 '{s}与{o}相关',
+             'SimilarTo':                 '{s}与{o}类似',
+             'SymbolOf':                  '{s}象征着{o}',
+             'Synonym':                   '{s}和{o}在意思上相近',
+             'UsedFor':                   '{s}被用于{o}'}
 
     def lexicalize_zh(self, triple):
         s, p, o = triple
