@@ -10,8 +10,8 @@ import sys
 #加载模型roberta-large-nli-stsb-mean-tokens,前一个embedding用于query阶段，后一个用于找cms阶段
 #torch.cuda.empty_cache()
 def data_extract(one_caption):
-    embedder = SentenceTransformer('roberta-large-nli-stsb-mean-tokens')
-    embedder2 = SentenceTransformer('multi-qa-mpnet-base-dot-v1')
+    embedder = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_roberta-large-nli-stsb-mean-tokens')
+    embedder2 = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_multi-qa-mpnet-base-dot-v1')
     
     #sys.path.append('./HybridNet/')
     #加载ATOMIC数据集，构建event组成的语料库

@@ -60,6 +60,9 @@ class SentSimi:
 
     @torch.no_grad()
     def lookup(self, q, ks, k=5, batch_size=128, threshold=0.3):
+        if len(ks) == 0:
+            return [], []
+
         query = self._encode(q, batch_size=batch_size)
         key = self._encode(ks, batch_size=batch_size)
 
@@ -187,6 +190,8 @@ class SentMaker:
 
 
 def join_sents(sents, lang='en'):
+    if len(sents) == 0:
+        return ''
     if lang == 'en':
         context = '. '.join(sents) + '.'
         context = context.replace('_', ' ')
