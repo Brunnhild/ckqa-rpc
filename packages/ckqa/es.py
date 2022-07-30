@@ -31,3 +31,43 @@ class ES:
                 i['_source']['object']
             ] for i in resp['hits']['hits']
         ]
+
+    def exist(self, subject, relation, object, index=None):
+        print({
+            'subject': subject,
+            'relation': relation,
+            'object': object
+        })
+        resp = self.es.search(index=index if index is not None else self.index, query={
+            'bool': {
+                'must': [
+                    {
+                        'match': {
+                            'subject': subject
+                        }
+                    },
+                    {
+                        'match': {
+                            'relation': relation
+                        }
+                    },
+                    {
+                        'match': {
+                            'object': object
+                        }
+                    }
+                ]
+            }
+        })
+
+        return len(resp['hits']['hits']) > 0
+
+    def update(self, id, doc):
+        self.es.update(index=self.index, id=id, body={
+            'doc': doc
+        })
+        print(f'updated: {id}')
+
+    def insert(self, doc):
+        resp = self.es.index(index=self.index, document=doc)
+        print(resp)

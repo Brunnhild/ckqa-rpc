@@ -2,7 +2,7 @@ import sys
 from urllib import parse
 sys.path.append('service/gen-py')
 from ckqa import CKQA
-from ckqa.ttypes import Result, Tuple, Scale
+from ckqa.ttypes import Result, Tuple, Scale, CompletionResult
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
@@ -13,6 +13,7 @@ from packages.ckqa.kb import GConceptNetCS
 from packages.ckqa.es import ES
 from packages.ckqa.sent import SentParser, SentSimi, SentMaker, join_sents
 from packages.ckqa.qa import MaskedQA, SpanQA, FreeQA
+from packages.completion.api import CompletionModel
 from packages.ckqa.v2cTry import v2cPrint
 from HybridNet.main_process import process
 
@@ -33,7 +34,9 @@ from elasticsearch7.helpers import scan
 
 class RPCHandler:
     def __init__(self) -> None:
-        pass
+        self.completion_model = CompletionModel('./packages/completion/release')
+        self.es = ES()
+        self.sbert_model = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2')
 
     def getLang(self, s):
         if len(s) == len(s.encode()):
@@ -62,10 +65,9 @@ class RPCHandler:
 
         # 链接至常识图谱
         # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-        es = ES()
         context = []
         for e in entity:
-            context.extend(es.query(e, size=None))
+            context.extend(self.es.query(e, size=None))
         context = self.deduplicate(context)
         print('Context triple:', context)
 
@@ -103,10 +105,9 @@ class RPCHandler:
 
         # 链接至常识图谱
         # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-        es = ES()
         context = []
         for e in entity:
-            context.extend(es.query(e, size=None))
+            context.extend(self.es.query(e, size=None))
         context = self.deduplicate(context)
         print('Context triple:', context)
 
@@ -242,44 +243,6 @@ class RPCHandler:
 
         return [Result('Text', result, context)]
 
-    # def getMaskWordResult(self, query):
-    #     q = parse.unquote(query)
-    #
-    #     # 解析问题中的实体
-    #     # TODO: 优化自动机代码，提高词典的解析速度；当前为python代码，构建树形结构速度慢。
-    #     parser = SentParser(name='zh_core_web_sm')
-    #     entity = parser.parse(q.replace('[MASK]', ''))
-    #     print('Parsing sentence:', entity)
-    #
-    #     # 链接至常识图谱
-    #     # TODO: 增加语义相似匹配代码，当前为字符匹配，默认为小写
-    #     kb = GConceptNetCS('192.168.10.174')
-    #     context = []
-    #     for e in entity:
-    #         context.extend(kb.query(e))
-    #     print('Context triple:', context)
-    #
-    #     # 将检索到的三元组组合成自然语言
-    #     maker = SentMaker()
-    #     context = [maker.lexicalize_zh(triple) for triple in context]
-    #     print('Context sentence:', context)
-    #
-    #     context_sim = SentSimi()
-    #     context = context_sim.lookup(q, context, k=5)
-    #     print('Query-related sentence:', context)
-    #
-    #     engine = MaskedQA('junnyu/wobert_chinese_plus_base', WoBertTokenizer)
-    #     q = q.replace('[MASK]', engine.mask_token)
-    #     context = join_sents(context, lang='zh')
-    #
-    #     result = engine(q, context)
-    #     result_without_context = engine(q, '')
-    #
-    #     print(result_without_context)
-    #     print(result)
-    #
-    #     return [Result('none', result_without_context, ''), Result('ckqa', result, context)]
-
     def getExtraction(self, query):
         path_to_model = 'packages/choice/ipoie'
         max_step = 10
@@ -292,8 +255,7 @@ class RPCHandler:
         extraction = standalone.pipeline([query], batch_size=32)
 
         def get_embedding(items):
-            model = SentenceTransformer('/home/ubuntu/.cache/torch/sentence_transformers/sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2')
-            return model.encode(items[1] + items[0] + items[2])
+            return self.sbert_model.encode(items[1] + items[0] + items[2])
 
         res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
         return list(res)
@@ -328,7 +290,7 @@ class RPCHandler:
         print(cms)
         print("server queries:")
         print(queries)
-        
+
         cms['query1'] = queries[0]
         cms['query2'] = queries[1]
         cms['query3'] = queries[2]
@@ -340,11 +302,9 @@ class RPCHandler:
         all_entities_count = 0
         all_entities_count_cn = 0
 
-        es = ES()
-
         res = scan(
-            client=es.es,
-            index=es.index,
+            client=self.es.es,
+            index=self.es.index,
             query={
                 'query': {
                     'match_all': {}
@@ -362,6 +322,32 @@ class RPCHandler:
                         all_entities_count_cn += 1
 
         return Scale(all_entities_count, all_entities_count_cn)
+
+    def getCompletion(self, head, rel, isInv):
+        res = []
+        for item in self.completion_model.predict(head, rel, isInv)['t']:
+            exist = self.es.exist(head, rel, item[0])
+            res.append(CompletionResult(item[0], item[1], exist))
+        return res
+
+    def upsert(self, id, subject, relation, object):
+        doc = {
+            'subject': subject,
+            'relation': relation,
+            'object': object,
+            'lang': self.getLang(f'{subject}{object}')
+        }
+        maker = SentMaker()
+        if doc['lang'] == 'en':
+            doc['query'] = maker.lexicalize((subject, relation, object))
+        else:
+            doc['query'] = maker.lexicalize_zh((subject, relation, object))
+        doc['vector'] = self.sbert_model.encode(doc['query']).tolist()
+
+        if id is not None and len(id) > 0:
+            self.es.update(id, doc)
+        else:
+            self.es.insert(doc)
 
 
 if __name__ == '__main__':

@@ -142,6 +142,7 @@ cython_debug/
 
 service/gen-py/
 packages/choice/ipoie
+packages/completion/release
 
 *.tar.gz
 .DS_Store
