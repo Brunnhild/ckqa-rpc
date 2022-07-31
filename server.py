@@ -26,6 +26,7 @@ from packages.choice.model import T5PromptTuningForConditionalGeneration
 from packages.choice.standalone import Standalone
 
 import os
+import traceback
 
 from sentence_transformers import SentenceTransformer
 
@@ -200,12 +201,16 @@ class RPCHandler:
         return [Result('ckqa', [result], context)]
 
     def getMaskResult(self, query, includeNone, includeCSKG):
-        q = parse.unquote(query)
+        try:
+            q = parse.unquote(query)
 
-        if self.getLang(q) == 'en':
-            return self.getMaskResultEnglish(q, includeNone, includeCSKG)
-        else:
-            return self.getMaskResultChinese(q, includeNone, includeCSKG)
+            if self.getLang(q) == 'en':
+                return self.getMaskResultEnglish(q, includeNone, includeCSKG)
+            else:
+                return self.getMaskResultChinese(q, includeNone, includeCSKG)
+        except Exception:
+            traceback.print_exc()
+            return []
 
     def getSpanResult(self, query):
         # q = 'Lions like to eat [MASK].'
@@ -217,137 +222,164 @@ class RPCHandler:
             return self.getSpanResultChinese(q)
 
     def getTextQaResult(self, query, text):
-        path_to_model = 'packages/choice/ipoie'
-        max_step = 10
-        device = -1
+        try:
+            path_to_model = 'packages/choice/ipoie'
+            max_step = 10
+            device = -1
 
-        tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
-        model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
+            tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
+            model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
 
-        standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
-        extraction = standalone.pipeline([text], batch_size=32)
+            standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
+            extraction = standalone.pipeline([text], batch_size=32)
 
-        triples = map(lambda x: (x[0][1], x[0][0], x[0][2]), extraction[text].items())
-        # 将检索到的三元组组合成自然语言
-        maker = SentMaker()
-        context = [maker.lexicalize(triple) for triple in triples]
-        print('Context sentence:', context)
+            triples = map(lambda x: (x[0][1], x[0][0], x[0][2]), extraction[text].items())
+            # 将检索到的三元组组合成自然语言
+            maker = SentMaker()
+            context = [maker.lexicalize(triple) for triple in triples]
+            print('Context sentence:', context)
 
-        context_sim = SentSimi()
-        context, _ = context_sim.lookup(query, context, k=5)
-        print('Query-related sentence:', context)
+            context_sim = SentSimi()
+            context, _ = context_sim.lookup(query, context, k=5)
+            print('Query-related sentence:', context)
 
-        engine = FreeQA('/mnt/ssd/wyt/transformers_models/bart-base-chinese')
-        context = join_sents(context, lang='zh')
-        result = engine(query, context)
+            engine = FreeQA('/mnt/ssd/wyt/transformers_models/bart-base-chinese')
+            context = join_sents(context, lang='zh')
+            result = engine(query, context)
 
-        return [Result('Text', result, context)]
+            return [Result('Text', result, context)]
+        except Exception:
+            traceback.print_exc()
+            return []
 
     def getExtraction(self, query):
-        path_to_model = 'packages/choice/ipoie'
-        max_step = 10
-        device = -1
+        try:
+            path_to_model = 'packages/choice/ipoie'
+            max_step = 10
+            device = -1
 
-        tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
-        model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
+            tokenizer = T5TokenizerFast.from_pretrained(path_to_model)
+            model = T5PromptTuningForConditionalGeneration.from_pretrained(path_to_model)
 
-        standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
-        extraction = standalone.pipeline([query], batch_size=32)
+            standalone = Standalone(model=model, tokenizer=tokenizer, max_step=max_step, device=device)
+            extraction = standalone.pipeline([query], batch_size=32)
 
-        def get_embedding(items):
-            return self.sbert_model.encode(items[1] + items[0] + items[2])
+            def get_embedding(items):
+                return self.sbert_model.encode(items[1] + items[0] + items[2])
 
-        res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
-        return list(res)
+            res = map(lambda x: Tuple(x[0], x[1], get_embedding(x[0])), extraction[query].items())
+            return list(res)
+        except Exception:
+            traceback.print_exc()
+            return []
 
     def getEntailment(self, premise, hypothesises):
-        # pose sequence as a NLI premise and label as a hypothesis
-        nli_model = AutoModelForSequenceClassification.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
-        tokenizer = AutoTokenizer.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
+        try:
+            # pose sequence as a NLI premise and label as a hypothesis
+            nli_model = AutoModelForSequenceClassification.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
+            tokenizer = AutoTokenizer.from_pretrained('/mnt/ssd/wyt/transformers_models/bart-large-mnli')
 
-        res = []
-        for hypothesis in hypothesises:
-            # run through model pre-trained on MNLI
-            with torch.no_grad():
-                x = tokenizer.encode(premise, hypothesis, return_tensors='pt',
-                                     truncation_strategy='only_first')
-                logits = nli_model(x)[0]
+            res = []
+            for hypothesis in hypothesises:
+                # run through model pre-trained on MNLI
+                with torch.no_grad():
+                    x = tokenizer.encode(premise, hypothesis, return_tensors='pt',
+                                         truncation_strategy='only_first')
+                    logits = nli_model(x)[0]
 
-                # we throw away "neutral" (dim 1) and take the probability of
-                # "entailment" (2) as the probability of the label being true
-                entail_contradiction_logits = logits[:, [0, 2]]
-                probs = entail_contradiction_logits.softmax(dim=1)
-                prob_label_is_true = probs[:, 1]
+                    # we throw away "neutral" (dim 1) and take the probability of
+                    # "entailment" (2) as the probability of the label being true
+                    entail_contradiction_logits = logits[:, [0, 2]]
+                    probs = entail_contradiction_logits.softmax(dim=1)
+                    prob_label_is_true = probs[:, 1]
 
-                res.append(prob_label_is_true.item())
+                    res.append(prob_label_is_true.item())
 
-        return res
+            return res
+        except Exception:
+            traceback.print_exc()
+            return []
 
     def get_cms(self,query,video):
-        #cms,queries=v2cPrint(query,video)
-        cms,queries=process(query,video)
-        print("server cms:")
-        print(cms)
-        print("server queries:")
-        print(queries)
+        try:
+            #cms,queries=v2cPrint(query,video)
+            cms,queries=process(query,video)
+            print("server cms:")
+            print(cms)
+            print("server queries:")
+            print(queries)
 
-        cms['query1'] = queries[0]
-        cms['query2'] = queries[1]
-        cms['query3'] = queries[2]
-        cms['video'] = "video"+str(video)
-        return cms
+            cms['query1'] = queries[0]
+            cms['query2'] = queries[1]
+            cms['query3'] = queries[2]
+            cms['video'] = "video"+str(video)
+            return cms
+        except Exception:
+            traceback.print_exc()
+            return {}
 
     def getScale(self):
-        all_entities = {}
-        all_entities_count = 0
-        all_entities_count_cn = 0
+        try:
+            all_entities = {}
+            all_entities_count = 0
+            all_entities_count_cn = 0
 
-        res = scan(
-            client=self.es.es,
-            index=self.es.index,
-            query={
-                'query': {
-                    'match_all': {}
+            res = scan(
+                client=self.es.es,
+                index=self.es.index,
+                query={
+                    'query': {
+                        'match_all': {}
+                    }
                 }
-            }
-        )
+            )
 
-        for item in res:
-            source = item['_source']
-            for ent in [source['subject'], source['object']]:
-                if ent not in all_entities:
-                    all_entities[ent] = True
-                    all_entities_count += 1
-                    if source['lang'] == 'zh':
-                        all_entities_count_cn += 1
+            for item in res:
+                source = item['_source']
+                for ent in [source['subject'], source['object']]:
+                    if ent not in all_entities:
+                        all_entities[ent] = True
+                        all_entities_count += 1
+                        if source['lang'] == 'zh':
+                            all_entities_count_cn += 1
 
-        return Scale(all_entities_count, all_entities_count_cn)
+            return Scale(all_entities_count, all_entities_count_cn)
+        except Exception:
+            traceback.print_exc()
+            return Scale(0, 0)
 
     def getCompletion(self, head, rel, isInv):
-        res = []
-        for item in self.completion_model.predict(head, rel, isInv)['t']:
-            exist = self.es.exist(head, rel, item[0])
-            res.append(CompletionResult(item[0], item[1], exist))
-        return res
+        try:
+            res = []
+            for item in self.completion_model.predict(head, rel, isInv)['t']:
+                exist = self.es.exist(head, rel, item[0])
+                res.append(CompletionResult(item[0], item[1], exist))
+            return res
+        except Exception:
+            traceback.print_exc()
+            return []
 
     def upsert(self, id, subject, relation, object):
-        doc = {
-            'subject': subject,
-            'relation': relation,
-            'object': object,
-            'lang': self.getLang(f'{subject}{object}')
-        }
-        maker = SentMaker()
-        if doc['lang'] == 'en':
-            doc['query'] = maker.lexicalize((subject, relation, object))
-        else:
-            doc['query'] = maker.lexicalize_zh((subject, relation, object))
-        doc['vector'] = self.sbert_model.encode(doc['query']).tolist()
+        try:
+            doc = {
+                'subject': subject,
+                'relation': relation,
+                'object': object,
+                'lang': self.getLang(f'{subject}{object}')
+            }
+            maker = SentMaker()
+            if doc['lang'] == 'en':
+                doc['query'] = maker.lexicalize((subject, relation, object))
+            else:
+                doc['query'] = maker.lexicalize_zh((subject, relation, object))
+            doc['vector'] = self.sbert_model.encode(doc['query']).tolist()
 
-        if id is not None and len(id) > 0:
-            self.es.update(id, doc)
-        else:
-            self.es.insert(doc)
+            if id is not None and len(id) > 0:
+                self.es.update(id, doc)
+            else:
+                self.es.insert(doc)
+        except Exception:
+            traceback.print_exc()
 
 
 if __name__ == '__main__':
